@@ -1,23 +1,17 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.svm import SVC
-from sklearn.preprocessing import StandardScaler
 from datetime import datetime
 
 # Inicialización de session_state
-if 'model' not in st.session_state:
-    st.session_state['model'] = None
-if 'scaler' not in st.session_state:
-    st.session_state['scaler'] = None
 if 'threshold' not in st.session_state:
     st.session_state['threshold'] = None
 if 'hour_ranges' not in st.session_state:
     st.session_state['hour_ranges'] = []
 if 'selected_days' not in st.session_state:
     st.session_state['selected_days'] = []
-if 'training_data' not in st.session_state:
-    st.session_state['training_data'] = None
+if 'config_ready' not in st.session_state:
+    st.session_state['config_ready'] = False
 
 def load_and_process_data(file):
     """Carga y procesa el archivo CSV"""
@@ -65,6 +59,18 @@ def check_anomaly(row, threshold, selected_days, hour_ranges):
     
     return is_anomaly, reason_text, criteria_count
 
+def update_config():
+    """Actualiza la configuración y marca como lista para analizar"""
+    st.session_state['config_ready'] = True
+
+def format_dataframe(df):
+    """Aplica formato al DataFrame para su visualización"""
+    if 'Kwh' in df.columns:
+        df['Kwh'] = df['Kwh'].round(2)
+    if 'Porcentaje sobre umbral' in df.columns:
+        df['Porcentaje sobre umbral'] = df['Porcentaje sobre umbral'].round(2)
+    return df
+
 def main():
     st.title("Detector de Anomalías en Consumo Energético")
     
@@ -76,7 +82,6 @@ def main():
     
     if training_file is not None:
         df_train = load_and_process_data(training_file)
-        st.session_state['training_data'] = df_train
         
         st.subheader("Datos de Entrenamiento")
         st.dataframe(format_dataframe(df_train), use_container_width=True)
@@ -108,6 +113,7 @@ def main():
             key='days_multiselect'
         )
         selected_days_numeric = [dias_semana[day] for day in selected_days]
+        st.session_state['selected_days'] = selected_days_numeric
         
         # 3. Filtro de horas
         st.sidebar.subheader("Rangos de Horas Normales")
@@ -125,6 +131,14 @@ def main():
             else:
                 st.sidebar.warning(f"El rango {i+1} no es válido (inicio debe ser menor que fin)")
         
+        st.session_state['hour_ranges'] = hour_ranges
+        
+        # Botón para actualizar configuración
+        if st.sidebar.button("Actualizar Configuración"):
+            with st.spinner("Actualizando configuración..."):
+                update_config()
+                st.success("Configuración actualizada exitosamente!")
+        
         # Mostrar configuración actual
         st.subheader("Configuración de Detección de Anomalías")
         st.write(f"• Consumo máximo normal: {threshold:.2f} kWh")
@@ -137,12 +151,14 @@ def main():
         st.sidebar.subheader("Archivo para Predicción")
         prediction_file = st.sidebar.file_uploader("Cargar archivo CSV para predicción", type=['csv'])
         
-        if prediction_file is not None:
+        if prediction_file is not None and st.session_state['config_ready']:
             df_pred = load_and_process_data(prediction_file)
             
             # Aplicar criterios de anomalía directamente
             anomaly_results = [
-                check_anomaly(row, threshold, selected_days_numeric, hour_ranges)
+                check_anomaly(row, st.session_state['threshold'], 
+                            st.session_state['selected_days'], 
+                            st.session_state['hour_ranges'])
                 for _, row in df_pred.iterrows()
             ]
             
@@ -199,14 +215,8 @@ def main():
                     st.dataframe(df_anomalies['Hour'].value_counts().sort_index(), use_container_width=True)
             else:
                 st.info("No se detectaron consumos anómalos en los datos.")
-
-def format_dataframe(df):
-    """Aplica formato al DataFrame para su visualización"""
-    if 'Kwh' in df.columns:
-        df['Kwh'] = df['Kwh'].round(2)
-    if 'Porcentaje sobre umbral' in df.columns:
-        df['Porcentaje sobre umbral'] = df['Porcentaje sobre umbral'].round(2)
-    return df
+        elif prediction_file is not None:
+            st.warning("Por favor, actualiza la configuración usando el botón 'Actualizar Configuración'")
 
 if __name__ == "__main__":
     main()

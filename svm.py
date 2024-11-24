@@ -83,6 +83,15 @@ def update_model():
         return True
     return False
 
+def format_dataframe(df):
+    """Aplica formato al DataFrame para su visualización"""
+    # Formatear columnas numéricas
+    if 'Kwh' in df.columns:
+        df['Kwh'] = df['Kwh'].round(2)
+    if 'Porcentaje sobre umbral' in df.columns:
+        df['Porcentaje sobre umbral'] = df['Porcentaje sobre umbral'].round(2)
+    return df
+
 def main():
     st.title("Detector de Anomalías en Consumo Energético")
     
@@ -97,7 +106,7 @@ def main():
         st.session_state['training_data'] = df_train
         
         st.subheader("Datos de Entrenamiento")
-        st.write(df_train)
+        st.dataframe(format_dataframe(df_train), use_container_width=True)
         
         # Configuración de filtros
         st.sidebar.subheader("Configuración de Filtros")
@@ -190,14 +199,18 @@ def main():
             # Mostrar resultados
             st.subheader("Resultados de la Predicción")
             display_columns = ['Datetime', 'DayName', 'Hour', 'Minute', 'Kwh', 'Clasificación', 'Razón']
-            st.write(df_pred[display_columns])
+            st.dataframe(format_dataframe(df_pred[display_columns]), use_container_width=True)
             
             # Estadísticas
             st.subheader("Estadísticas de Predicción")
             pred_normal = sum(predictions == 1)
             pred_anomaly = sum(predictions == 0)
-            st.write(f"Consumos Clasificados como Normales: {pred_normal}")
-            st.write(f"Consumos Clasificados como Anómalos: {pred_anomaly}")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Consumos Normales", pred_normal)
+            with col2:
+                st.metric("Consumos Anómalos", pred_anomaly)
             
             # Detalle de anomalías
             st.subheader("Detalle de Consumos Anómalos")
@@ -205,28 +218,32 @@ def main():
             
             if not df_anomalies.empty:
                 df_anomalies = df_anomalies.sort_values(by='Kwh', ascending=False)
-                df_anomalies['Porcentaje sobre umbral'] = ((df_anomalies['Kwh'] - threshold) / threshold * 100).round(2)
+                df_anomalies['Porcentaje sobre umbral'] = ((df_anomalies['Kwh'] - threshold) / threshold * 100)
                 
                 display_columns_anomalies = ['Datetime', 'DayName', 'Hour', 'Minute', 'Kwh', 'Porcentaje sobre umbral', 'Razón']
-                styled_anomalies = df_anomalies[display_columns_anomalies].style.format({
-                    'Kwh': '{:.2f}',
-                    'Porcentaje sobre umbral': '{:.2f}%'
-                }).background_gradient(subset=['Kwh'], cmap='Reds')
+                st.dataframe(format_dataframe(df_anomalies[display_columns_anomalies]), use_container_width=True)
                 
-                st.write(styled_anomalies)
-                
+                # Mostrar estadísticas en columnas
                 st.write("\nEstadísticas de consumos anómalos:")
-                st.write(f"- Consumo máximo: {df_anomalies['Kwh'].max():.2f} kWh")
-                st.write(f"- Consumo promedio de anomalías: {df_anomalies['Kwh'].mean():.2f} kWh")
-                st.write(f"- Desviación estándar: {df_anomalies['Kwh'].std():.2f} kWh")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Consumo máximo", f"{df_anomalies['Kwh'].max():.2f} kWh")
+                with col2:
+                    st.metric("Consumo promedio", f"{df_anomalies['Kwh'].mean():.2f} kWh")
+                with col3:
+                    st.metric("Desviación estándar", f"{df_anomalies['Kwh'].std():.2f} kWh")
                 
-                st.write("\nDistribución de anomalías por día de la semana:")
-                st.write(df_anomalies['DayName'].value_counts())
+                # Distribución de anomalías
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("Distribución por día de la semana:")
+                    st.dataframe(df_anomalies['DayName'].value_counts(), use_container_width=True)
                 
-                st.write("\nDistribución de anomalías por hora:")
-                st.write(df_anomalies['Hour'].value_counts().sort_index())
+                with col2:
+                    st.write("Distribución por hora:")
+                    st.dataframe(df_anomalies['Hour'].value_counts().sort_index(), use_container_width=True)
             else:
-                st.write("No se detectaron consumos anómalos en los datos.")
+                st.info("No se detectaron consumos anómalos en los datos.")
         elif prediction_file is not None:
             st.warning("Por favor, entrena primero el modelo usando el botón 'Entrenar/Actualizar Modelo'")
 

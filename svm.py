@@ -89,7 +89,7 @@ def main():
             # Agregar predicciones al DataFrame
             df_pred['Clasificación'] = ['Normal' if pred == 1 else 'Anómalo' for pred in predictions]
             
-            # Mostrar resultados
+            # Mostrar resultados completos
             st.subheader("Resultados de la Predicción")
             st.write(df_pred)
             
@@ -99,6 +99,34 @@ def main():
             pred_anomaly = sum(predictions == 0)
             st.write(f"Consumos Clasificados como Normales: {pred_normal}")
             st.write(f"Consumos Clasificados como Anómalos: {pred_anomaly}")
+            
+            # Mostrar solo los datos anómalos
+            st.subheader("Detalle de Consumos Anómalos")
+            df_anomalies = df_pred[df_pred['Clasificación'] == 'Anómalo'].copy()
+            
+            if not df_anomalies.empty:
+                # Ordenar por consumo (Kwh) de mayor a menor
+                df_anomalies = df_anomalies.sort_values(by='Kwh', ascending=False)
+                
+                # Agregar columna de porcentaje sobre el umbral
+                df_anomalies['Porcentaje sobre umbral'] = ((df_anomalies['Kwh'] - threshold) / threshold * 100).round(2)
+                
+                # Mostrar DataFrame con formato mejorado
+                st.write("Consumos clasificados como anómalos, ordenados por magnitud:")
+                styled_anomalies = df_anomalies.style.format({
+                    'Kwh': '{:.2f}',
+                    'Porcentaje sobre umbral': '{:.2f}%'
+                }).background_gradient(subset=['Kwh'], cmap='Reds')
+                
+                st.write(styled_anomalies)
+                
+                # Añadir estadísticas de anomalías
+                st.write("\nEstadísticas de consumos anómalos:")
+                st.write(f"- Consumo máximo: {df_anomalies['Kwh'].max():.2f} kWh")
+                st.write(f"- Consumo promedio de anomalías: {df_anomalies['Kwh'].mean():.2f} kWh")
+                st.write(f"- Desviación estándar: {df_anomalies['Kwh'].std():.2f} kWh")
+            else:
+                st.write("No se detectaron consumos anómalos en los datos.")
 
 if __name__ == "__main__":
     main()

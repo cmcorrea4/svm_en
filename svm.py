@@ -12,17 +12,30 @@ def load_and_process_data(file):
     # Extraer características temporales
     df['Hour'] = df['Datetime'].dt.hour
     df['Minute'] = df['Datetime'].dt.minute
+    df['Day'] = df['Datetime'].dt.dayofweek  # 0 = Lunes, 6 = Domingo
+    
+    # Agregar nombre del día para visualización
+    dias = {
+        0: 'Lunes',
+        1: 'Martes',
+        2: 'Miércoles',
+        3: 'Jueves',
+        4: 'Viernes',
+        5: 'Sábado',
+        6: 'Domingo'
+    }
+    df['DayName'] = df['Day'].map(dias)
     return df
 
 def create_features(df):
     """Crea características para el modelo"""
-    X = df[['Hour', 'Minute', 'Kwh']].values
+    X = df[['Day', 'Hour', 'Minute', 'Kwh']].values
     return X
 
 def train_model(X, threshold):
     """Entrena el modelo SVM"""
     # Crear etiquetas basadas en el umbral
-    y = (X[:, 2] <= threshold).astype(int)  # 1 para normal, 0 para anómalo
+    y = (X[:, 3] <= threshold).astype(int)  # 1 para normal, 0 para anómalo
     
     # Escalar características
     scaler = StandardScaler()
@@ -91,7 +104,9 @@ def main():
             
             # Mostrar resultados completos
             st.subheader("Resultados de la Predicción")
-            st.write(df_pred)
+            # Mostrar solo las columnas relevantes
+            display_columns = ['Datetime', 'DayName', 'Hour', 'Minute', 'Kwh', 'Clasificación']
+            st.write(df_pred[display_columns])
             
             # Mostrar estadísticas de predicción
             st.subheader("Estadísticas de Predicción")
@@ -113,7 +128,10 @@ def main():
                 
                 # Mostrar DataFrame con formato mejorado
                 st.write("Consumos clasificados como anómalos, ordenados por magnitud:")
-                styled_anomalies = df_anomalies.style.format({
+                
+                # Seleccionar columnas para mostrar
+                display_columns_anomalies = ['Datetime', 'DayName', 'Hour', 'Minute', 'Kwh', 'Porcentaje sobre umbral']
+                styled_anomalies = df_anomalies[display_columns_anomalies].style.format({
                     'Kwh': '{:.2f}',
                     'Porcentaje sobre umbral': '{:.2f}%'
                 }).background_gradient(subset=['Kwh'], cmap='Reds')
@@ -125,6 +143,11 @@ def main():
                 st.write(f"- Consumo máximo: {df_anomalies['Kwh'].max():.2f} kWh")
                 st.write(f"- Consumo promedio de anomalías: {df_anomalies['Kwh'].mean():.2f} kWh")
                 st.write(f"- Desviación estándar: {df_anomalies['Kwh'].std():.2f} kWh")
+                
+                # Análisis por día de la semana
+                st.write("\nDistribución de anomalías por día de la semana:")
+                anomalies_by_day = df_anomalies['DayName'].value_counts()
+                st.write(anomalies_by_day)
             else:
                 st.write("No se detectaron consumos anómalos en los datos.")
 

@@ -44,20 +44,44 @@ def create_features(df):
     X = df[['Day', 'Hour', 'Minute', 'Kwh']].values
     return X
 
+def check_anomaly(row, threshold, selected_days, hour_ranges):
+    """Verifica si un registro es anómalo según los criterios definidos"""
+    reasons = []
+    is_anomaly = False
+    
+    # Verificar consumo
+    if row['Kwh'] > threshold:
+        reasons.append(f"Consumo > {threshold:.2f} kWh")
+        is_anomaly = True
+    
+    # Verificar día
+    if row['Day'] not in selected_days:
+        reasons.append("Día no permitido")
+        is_anomaly = True
+    
+    # Verificar hora
+    if not any(start <= row['Hour'] <= end for start, end in hour_ranges):
+        reasons.append("Fuera de horario")
+        is_anomaly = True
+    
+    return is_anomaly, ', '.join(reasons) if reasons else 'Normal'
+
 def train_model(X, threshold, hour_ranges, selected_days):
     """Entrena el modelo SVM considerando umbrales de hora y día"""
     y = np.ones(len(X))
     
-    for idx in range(len(X)):
-        day = X[idx, 0]
-        hour = X[idx, 1]
-        kwh = X[idx, 3]
-        
-        if kwh > threshold:
-            y[idx] = 0
-        elif day not in selected_days:
-            y[idx] = 0
-        elif not any(start <= hour < end for start, end in hour_ranges):
+    # Crear DataFrame temporal para facilitar el chequeo
+    temp_df = pd.DataFrame({
+        'Day': X[:, 0],
+        'Hour': X[:, 1],
+        'Minute': X[:, 2],
+        'Kwh': X[:, 3]
+    })
+    
+    # Aplicar criterios de anomalía
+    for idx, row in temp_df.iterrows():
+        is_anomaly, _ = check_anomaly(row, threshold, selected_days, hour_ranges)
+        if is_anomaly:
             y[idx] = 0
     
     scaler = StandardScaler()
@@ -85,7 +109,6 @@ def update_model():
 
 def format_dataframe(df):
     """Aplica formato al DataFrame para su visualización"""
-    # Formatear columnas numéricas
     if 'Kwh' in df.columns:
         df['Kwh'] = df['Kwh'].round(2)
     if 'Porcentaje sobre umbral' in df.columns:
@@ -144,9 +167,9 @@ def main():
         for i in range(num_ranges):
             col1, col2 = st.sidebar.columns(2)
             with col1:
-                start = st.number_input(f"Inicio rango {i+1}", min_value=0, max_value=23, value=8, key=f'start_{i}')
+                start = st.number_input(f"Inicio rango {i+1}", min_value=0, max_value=24, value=8, key=f'start_{i}')
             with col2:
-                end = st.number_input(f"Fin rango {i+1}", min_value=0, max_value=23, value=18, key=f'end_{i}')
+                end = st.number_input(f"Fin rango {i+1}", min_value=0, max_value=24, value=18, key=f'end_{i}')
             if start < end:
                 hour_ranges.append((start, end))
             else:
@@ -176,25 +199,16 @@ def main():
         
         if prediction_file is not None and st.session_state['model'] is not None:
             df_pred = load_and_process_data(prediction_file)
-            X_pred = create_features(df_pred)
             
-            # Realizar predicciones
-            X_pred_scaled = st.session_state['scaler'].transform(X_pred)
-            predictions = st.session_state['model'].predict(X_pred_scaled)
+            # Aplicar criterios de anomalía directamente
+            anomaly_results = [
+                check_anomaly(row, threshold, st.session_state['selected_days'], hour_ranges)
+                for _, row in df_pred.iterrows()
+            ]
             
-            # Agregar predicciones y razones
-            df_pred['Clasificación'] = ['Normal' if pred == 1 else 'Anómalo' for pred in predictions]
-            df_pred['Razón'] = ''
-            
-            for idx, row in df_pred.iterrows():
-                reasons = []
-                if row['Kwh'] > threshold:
-                    reasons.append(f"Consumo > {threshold:.2f} kWh")
-                if row['Day'] not in st.session_state['selected_days']:
-                    reasons.append("Día no permitido")
-                if not any(start <= row['Hour'] < end for start, end in hour_ranges):
-                    reasons.append("Fuera de horario")
-                df_pred.at[idx, 'Razón'] = ', '.join(reasons) if reasons else 'Normal'
+            df_pred['Clasificación'] = ['Anómalo' if is_anomaly else 'Normal' 
+                                      for is_anomaly, _ in anomaly_results]
+            df_pred['Razón'] = [reason for _, reason in anomaly_results]
             
             # Mostrar resultados
             st.subheader("Resultados de la Predicción")
@@ -203,8 +217,8 @@ def main():
             
             # Estadísticas
             st.subheader("Estadísticas de Predicción")
-            pred_normal = sum(predictions == 1)
-            pred_anomaly = sum(predictions == 0)
+            pred_normal = sum(df_pred['Clasificación'] == 'Normal')
+            pred_anomaly = sum(df_pred['Clasificación'] == 'Anómalo')
             
             col1, col2 = st.columns(2)
             with col1:
